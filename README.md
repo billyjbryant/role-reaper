@@ -43,7 +43,7 @@ There are two command line tools that can be used to run the script with differe
 
 - `lambda/roleDisabler.py` - This script will disable roles that meet the criteria specified as command line arguments or environment variables.
 - `lambda/index.py` - This script will delete roles that meet the criteria specified as command line arguments or environment variables.
-  
+
 ### roleDisabler
 
 #### Command Line Arguments (roleDisabler)
@@ -143,21 +143,21 @@ There have been several executions of the script that have deleted roles. The ba
 To restore a role from backup, follow these steps:
 
 1. Identify the role you want to restore from the `backup-templates` directory.
-   1. Example role:  
+   1. Example role:
    `acm-staging-CertificateManagerRole-1BARRKHX7I2DE-20240515-164650.template.json`
 2. Create a txt file in the `lambda/recovered-roles` directory that contains within it the name of the role(s) you want to restore as it is named in the `backup-templates` directory (without the appended date).
-   1. Example txt file name:  
+   1. Example txt file name:
    `recovered-roles-<date>.txt`
-      1. Example file contents:  
-      `acm-staging-CertificateManagerRole-1BARRKHX7I2DE`  
-      `<role-name-2>`  
+      1. Example file contents:
+      `acm-staging-CertificateManagerRole-1BARRKHX7I2DE`
+      `<role-name-2>`
 3. Make sure you have you have your environment set via the aws cli
    1. You can use `aws sts get-caller-identity` to check
 4. From the `lambda` direcotry run the `roleDisabler.py` script with the `--restore` flag and the path to the text file you created.
-   1. Example  
+   1. Example
     `python roleDisabler.py recovered-roles/recovered-roles-<date>.txt --restore`
 5. The script will restore the role from the backup template using CloudFormation.
-   1. Receiving output similar to the following for each role  
+   1. Receiving output similar to the following for each role
    `<date> <time> [info     ] Role acm-staging-CertificateManagerRole-1BARRKHX7I2DE restored`
 6. When all roles have been recovered within the file - Add, commit, and push the new file to keep track of recovered roles
 

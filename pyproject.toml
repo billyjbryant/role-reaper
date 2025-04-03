@@ -26,6 +26,7 @@ flake8 = "^6.0"
 mypy = "^1.0"
 isort = "^5.12.0"
 pre-commit = "^3.4.0"
+autoflake = "^2.2.1"
 
 [tool.black]
 line-length = 88
@@ -40,24 +41,24 @@ exclude = '''
   | dist
   | build
   | __pycache__
-  | .mypy_cache
-  | .pytest_cache
-  | .tox
-  | .eggs
-  | *.egg-info
+  | \.mypy_cache
+  | \.pytest_cache
+  | \.tox
+  | \.eggs
+  | \*.egg-info
 )/
 '''
 
 [tool.isort]
 profile = "black"
-line_length = 88
+line_length = 160
 known_first_party = ["lambda"]
 known_third_party = ["boto3", "botocore", "pandas", "tqdm", "structlog"]
 default_section = "THIRDPARTY"
 force_single_line = true
 
 [tool.flake8]
-max-line-length = 88
+max-line-length = 160
 extend-ignore = ["E203", "W503"]
 exclude = [
     ".git",

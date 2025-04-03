@@ -84,7 +84,7 @@ export class RoleReaperStack extends cdk.Stack {
                 DRY_RUN: 'false',
                 DELETE: 'false',
                 TAG_KEY: 'RoleReaper',
-                
+
             }
         });
     }

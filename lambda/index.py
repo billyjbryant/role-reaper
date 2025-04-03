@@ -1,18 +1,20 @@
-import time
 import argparse
-import signal
-import json
 import datetime
+import json
+import logging
 import os
+import re
+import signal
 import sys
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from tqdm import tqdm
+import time
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import as_completed
+
 import boto3
 import botocore.exceptions as botoexceptions
 import pandas as pd
-import logging
 import structlog
-import re
+from tqdm import tqdm
 
 # Create an IAM client
 iam_client = boto3.client("iam")
@@ -53,11 +55,7 @@ def set_log_level(log_level: str = "INFO"):
         r"crit(ical)?": "CRITICAL",
     }
     matched_level = next(
-        (
-            full
-            for pattern, full in log_level_mapping.items()
-            if re.match(pattern, log_level, re.IGNORECASE)
-        ),
+        (full for pattern, full in log_level_mapping.items() if re.match(pattern, log_level, re.IGNORECASE)),
         None,
     )
     LOG_LEVEL = getattr(logging, matched_level, logging.INFO)
@@ -203,14 +201,8 @@ def enable_role(client, role):
 def fetch_stack_resources(cfn_client, stack_name):
     """Fetch resources for a specific CloudFormation stack."""
     try:
-        resources = make_api_call(
-            cfn_client, "list_stack_resources", StackName=stack_name
-        )
-        return [
-            (res["PhysicalResourceId"], stack_name)
-            for res in resources["StackResourceSummaries"]
-            if res["ResourceType"] == "AWS::IAM::Role"
-        ]
+        resources = make_api_call(cfn_client, "list_stack_resources", StackName=stack_name)
+        return [(res["PhysicalResourceId"], stack_name) for res in resources["StackResourceSummaries"] if res["ResourceType"] == "AWS::IAM::Role"]
     except Exception as e:
         logger.error(f"Error fetching resources for stack {stack_name}: {e}")
         return []
@@ -243,11 +235,7 @@ def get_active_stacks(region_name="us-east-1"):
 
         with ThreadPoolExecutor(max_workers=3) as executor:
             # Create a future for each stack page to fetch resources
-            futures = [
-                executor.submit(fetch_stack_resources, cfn_client, stack["StackName"])
-                for page in pages
-                for stack in page["StackSummaries"]
-            ]
+            futures = [executor.submit(fetch_stack_resources, cfn_client, stack["StackName"]) for page in pages for stack in page["StackSummaries"]]
             # Collect results from futures
             for future in as_completed(futures):
                 for role_name, stack_name in future.result():
@@ -267,17 +255,17 @@ def update_role_associations():
         futures = []
         for region in aws_regions:
             futures.append(executor.submit(get_active_stacks, region))
-        
+
         # Create a progress bar
         progress_bar = tqdm(total=len(futures), desc="Processing Regions", unit="region")
-        
+
         for future in as_completed(futures):
             role_to_stack_map.update(future.result())
             # Update the progress bar
             progress_bar.update(1)
             # Add a small delay to simulate work being done
             time.sleep(0.1)
-        
+
         # Close the progress bar
         progress_bar.close()
     logger.info(f"Number of roles associated with stacks across all regions: {len(role_to_stack_map)}")
@@ -305,7 +293,7 @@ def is_role_protected(role):
         "cloudfront",
         "service-role",
     ]
-    nonprotected_terms = ['test', 'staging', 'tmp', 'demo', 'example']
+    nonprotected_terms = ["test", "staging", "tmp", "demo", "example"]
     for prefix in protected_prefixes:
         for term in nonprotected_terms:
             if term in role["RoleName"]:
@@ -372,13 +360,9 @@ def output_to_s3(df, output_format, bucket, bucket_folder, output_file):
                 Body=df.to_json(orient="records", date_format="iso"),
             )
         elif output_format == "csv":
-            s3_client.put_object(
-                Bucket=bucket, Key=object_path, Body=df.to_csv(index=False)
-            )
+            s3_client.put_object(Bucket=bucket, Key=object_path, Body=df.to_csv(index=False))
         elif output_format == "md":
-            s3_client.put_object(
-                Bucket=bucket, Key=object_path, Body=df.to_markdown(index=False)
-            )
+            s3_client.put_object(Bucket=bucket, Key=object_path, Body=df.to_markdown(index=False))
         else:
             # Default output to table
             s3_client.put_object(Bucket=bucket, Key=object_path, Body=df.to_string())
@@ -474,13 +458,13 @@ def extract_tags(role):
                     else:
                         tags["CloudFormationStackStatus"] = "Unknown"
                 elif re.match(rf"{tag_key}:(.*)", key):
-                    match = re.match(rf"{tag_key}:(.*)", key) # Extract the new key
-                    new_key = match.group(1) 
-                    tags[new_key] = value 
-                    untag_role(iam_client, role["RoleName"], new_key) # Remove the old tag
+                    match = re.match(rf"{tag_key}:(.*)", key)  # Extract the new key
+                    new_key = match.group(1)
+                    tags[new_key] = value
+                    untag_role(iam_client, role["RoleName"], new_key)  # Remove the old tag
                     tags.pop(key, None)
                 else:
-                    for tag_key in [
+                    for __tag_key__ in [
                         "Application",
                         "CostCategory",
                         "DeleteAfter",
@@ -490,8 +474,8 @@ def extract_tags(role):
                         "ServiceOrganization",
                         "Team",
                     ]:
-                        if key.lower() == tag_key.lower():
-                            tags[tag_key] = value
+                        if key.lower() == __tag_key__.lower():
+                            tags[__tag_key__] = value
                             break
         except Exception as e:
             logger.error(f"Error extracting tags: {e}")
@@ -526,13 +510,9 @@ def display_banner(options):
         logger.warning("Force delete/disable mode enabled - Use with caution!")
     if not options.get("lambda_mode"):
         if options.get("delete"):
-            logger.warning(
-                "Deleting unused roles - This is not reversible USE WITH CAUTION!"
-            )
+            logger.warning("Deleting unused roles - This is not reversible USE WITH CAUTION!")
         elif options.get("disable_roles"):
-            logger.warning(
-                "Disabling unused roles - This can be reversed by using the 'enable-roles' argument"
-            )
+            logger.warning("Disabling unused roles - This can be reversed by using the 'enable-roles' argument")
         elif options.get("enable_roles"):
             logger.info("Enabling previously disabled roles")
         if not options.get("force") or not options.get("dry_run") or not options.get("lambda_mode"):
@@ -587,10 +567,7 @@ def list_roles_and_details(options):
         Returns:
             bool: True if the role has not been used recently, False otherwise
         """
-        return (
-            role_info["RoleLastUsed"] == ("Not Used Recently" or None)
-            and role_info["CreateDate"] < sixty_days_ago
-        )
+        return role_info["RoleLastUsed"] == ("Not Used Recently" or None) and role_info["CreateDate"] < sixty_days_ago
 
     def should_disable(role_info):
         """Check if the role should be disabled
@@ -613,21 +590,12 @@ def list_roles_and_details(options):
             bool: True if the role should be deleted, False otherwise
         """
         if role_info["DeleteAfter"] not in [None, "Not Available"]:
-            expired = (
-                datetime.datetime.strptime(
-                    role_info["DeleteAfter"], "%Y-%m-%d"
-                ).replace(tzinfo=datetime.timezone.utc)
-                <= now
-            )
+            expired = datetime.datetime.strptime(role_info["DeleteAfter"], "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc) <= now
             if expired:
-                logger.warning(
-                    f"Role {role_info['RoleName']} has expired as of {role_info['DeleteAfter']} and should be deleted"
-                )
+                logger.warning(f"Role {role_info['RoleName']} has expired as of {role_info['DeleteAfter']} and should be deleted")
                 return expired
             elif force and delete:
-                logger.warning(
-                    f"Role {role_info['RoleName']} has not expired, but should be deleted due to force delete flags"
-                )
+                logger.warning(f"Role {role_info['RoleName']} has not expired, but should be deleted due to force delete flags")
                 return True
         return False
 
@@ -640,13 +608,8 @@ def list_roles_and_details(options):
         Returns:
             bool: True if the role is orphaned, False otherwise
         """
-        has_stack = "CloudFormationStackName" in role_info and role_info[
-            "CloudFormationStackName"
-        ] not in ["Not Available", None, ""]
-        stack_inactive = (
-            "CloudFormationStackStatus" in role_info
-            and role_info["CloudFormationStackStatus"] not in ["Active"]
-        )
+        has_stack = "CloudFormationStackName" in role_info and role_info["CloudFormationStackName"] not in ["Not Available", None, ""]
+        stack_inactive = "CloudFormationStackStatus" in role_info and role_info["CloudFormationStackStatus"] not in ["Active"]
         has_team = "Team" in role_info and role_info["Team"] not in [
             "Not Available",
             None,
@@ -668,10 +631,7 @@ def list_roles_and_details(options):
             return role_info["Production"].lower() == "true"
         elif "Environment" in role_info and role_info["Environment"] is not None:
             return role_info["Environment"].lower() == "production"
-        elif (
-            "CloudFormationStackName" in role_info
-            and role_info["CloudFormationStackName"] not in ["Not Available", None, False]
-        ):
+        elif "CloudFormationStackName" in role_info and role_info["CloudFormationStackName"] not in ["Not Available", None, False]:
             return "prod" in role_info["CloudFormationStackName"].lower()
         return False
 
@@ -756,9 +716,7 @@ def list_roles_and_details(options):
         role_info = {
             "RoleName": role_details["Role"]["RoleName"],
             "Arn": role_details["Role"]["Arn"],
-            "CloudFormationStackName": role_to_stack_map.get(
-                role_details["Role"]["RoleName"], "Not Available"
-            ),
+            "CloudFormationStackName": role_to_stack_map.get(role_details["Role"]["RoleName"], "Not Available"),
             "Orphaned": False,
             "PendingDeletion": False,
             "Deleted": False,
@@ -766,9 +724,7 @@ def list_roles_and_details(options):
             "Disabled": False,
             "DisableAfter": None,
             "CreateDate": role_details["Role"]["CreateDate"],
-            "RoleLastUsed": role_details["Role"]
-            .get("RoleLastUsed", {})
-            .get("LastUsedDate", "Not Used Recently"),
+            "RoleLastUsed": role_details["Role"].get("RoleLastUsed", {}).get("LastUsedDate", "Not Used Recently"),
         }
         role_info.update(extract_tags(role_details["Role"]))
         role_info["Orphaned"] = is_role_orphaned(role_info)
@@ -776,9 +732,7 @@ def list_roles_and_details(options):
 
         # Flag the role based on the target_prod and target_stacks flags
         if should_flag_role(role_info, target_prod, target_stacks):
-            logger.debug(
-                f"Role {role_info['RoleName']} meets the criteria for deletion"
-            )
+            logger.debug(f"Role {role_info['RoleName']} meets the criteria for deletion")
             role_info["PendingDeletion"] = True
             role_info["DeleteAfter"] = get_delete_date(options.get("delete_on"), options.get("delete_after"))
             role_info["DisableAfter"] = get_disable_date(options.get("disable_after"))
@@ -803,9 +757,7 @@ def list_roles_and_details(options):
                 )
             tag_role(iam_client, role_info["RoleName"], tag_key, "true")
         else:
-            logger.debug(
-                f"Role {role_info['RoleName']} does not meet the criteria for deletion"
-            )
+            logger.debug(f"Role {role_info['RoleName']} does not meet the criteria for deletion")
 
         # Check if the role should be enabled
         if enable_roles and role_info["Disabled"] is True:
@@ -813,21 +765,15 @@ def list_roles_and_details(options):
 
         # Check if the role is pending deletion after processing
         if is_pending_deletion(role_info):
-            logger.info(
-                f"Role {role_info['RoleName']} is pending deletion on {role_info['DeleteAfter']}"
-            )
+            logger.info(f"Role {role_info['RoleName']} is pending deletion on {role_info['DeleteAfter']}")
             if role_info["RoleLastUsed"] != "Not Used Recently" or None:
-                logger.info(
-                    f"Role {role_info['RoleName']} was used recently, untagging for deletion"
-                )
+                logger.info(f"Role {role_info['RoleName']} was used recently, untagging for deletion")
                 role_info["PendingDeletion"] = False
                 role_info["DeleteAfter"] = None
                 role_info["DisableAfter"] = None
                 role_info["Deleted"] = False
                 role_info["Disabled"] = False
-                untag_role(
-                    iam_client, role_info["RoleName"], f"{tag_key}:PendingDeletion"
-                )
+                untag_role(iam_client, role_info["RoleName"], f"{tag_key}:PendingDeletion")
                 untag_role(iam_client, role_info["RoleName"], f"{tag_key}:DeleteAfter")
                 untag_role(iam_client, role_info["RoleName"], f"{tag_key}:Deleted")
                 untag_role(iam_client, role_info["RoleName"], f"{tag_key}:DisableAfter")
@@ -835,28 +781,20 @@ def list_roles_and_details(options):
                 untag_role(iam_client, role_info["RoleName"], tag_key)
             if should_delete(role_info):
                 if delete and not dry_run:
-                    if (
-                        is_role_production(role_info) and target_prod
-                    ) or not is_role_production(role_info):
+                    if (is_role_production(role_info) and target_prod) or not is_role_production(role_info):
                         delete_role(iam_client, role_info)
                         role_info["Deleted"] = True
                 elif delete and dry_run:
-                    logger.warning(
-                        f"Role {role_info['RoleName']} is ready for deletion, skipped in dry-run mode"
-                    )
+                    logger.warning(f"Role {role_info['RoleName']} is ready for deletion, skipped in dry-run mode")
                     role_info["Deleted"] = False
             elif should_disable(role_info):
                 if disable_roles and not dry_run:
                     role_info.update(disable_role(iam_client, role_info))
                 elif disable_roles and dry_run:
-                    logger.warning(
-                        f"Will disable role {role_info['RoleName']}, skipped in dry-run mode"
-                    )
+                    logger.warning(f"Will disable role {role_info['RoleName']}, skipped in dry-run mode")
                     role_info["Disabled"] = False
             else:
-                logger.warning(
-                    f"Role {role_info['RoleName']} is not ready for deletion"
-                )
+                logger.warning(f"Role {role_info['RoleName']} is not ready for deletion")
                 role_info["Deleted"] = False
                 role_info["Disabled"] = False
 
@@ -872,9 +810,7 @@ def list_roles_and_details(options):
             "RoleLastUsed",
         ]
         target_info = {k: role_info[k] for k in target_keys}
-        sorted_info = {
-            k: role_info[k] for k in sorted(role_info) if k not in target_keys
-        }
+        sorted_info = {k: role_info[k] for k in sorted(role_info) if k not in target_keys}
         sorted_role_info = {**target_info, **sorted_info}
         return sorted_role_info
 
@@ -941,19 +877,15 @@ def lambda_handler(event, context):
     }
     for idx, fmt in enumerate(options.get("output_format")):
         if fmt not in acceptable_formats:
-            logger.error(
-                f"Invalid output format: {fmt}! Valid options are: {', '.join(acceptable_formats)}"
-            )
+            logger.error(f"Invalid output format: {fmt}! Valid options are: {', '.join(acceptable_formats)}")
             sys.exit(1)
         elif fmt == "table":
             options.get("output_format")[idx] = "txt"  # Replace 'table' with 'txt'
     if not options.get("output_file"):
-        options["output_file"] = [
-            f"role-reaper-results-{formatted_timestamp}.{fmt}" for fmt in options.get("output_format")
-        ]
+        options["output_file"] = [f"role-reaper-results-{formatted_timestamp}.{fmt}" for fmt in options.get("output_format")]
     else:
         options["output_file"] = [file.strip() for file in options.get("output_file").split(",")]
-    
+
     if options.get("bucket"):
         options["object_path"] = f"s3://{options.get('bucket')}/{options.get('bucket_folder')}/{options.get('output_file')}"
 
@@ -983,9 +915,7 @@ if __name__ == "__main__":
     Returns:
         output: The output in the specified format
     """
-    parser = argparse.ArgumentParser(
-        description="List AWS IAM Roles and output in various formats."
-    )
+    parser = argparse.ArgumentParser(description="List AWS IAM Roles and output in various formats.")
     parser.add_argument(
         "-b",
         "--bucket",
@@ -1120,8 +1050,8 @@ if __name__ == "__main__":
         default=os.getenv("DISABLE_AFTER", None),
     )
     parser.add_argument(
-        '--exclude-patterns',
-        help='Comma separated list of patterns to exclude from role reaping',
+        "--exclude-patterns",
+        help="Comma separated list of patterns to exclude from role reaping",
         default=os.getenv("EXCLUDE_PATTERNS", None),
     )
     args = parser.parse_args()
@@ -1134,28 +1064,23 @@ if __name__ == "__main__":
         "event": None,
     }
 
-    options['output_format'] = args.output_format.lower().strip().split(",")
+    options["output_format"] = args.output_format.lower().strip().split(",")
     options["output_file"] = args.output_file.split(",") if args.output_file else []
 
     if len(options["output_format"]) < len(options["output_file"]):
         for file in options["output_file"]:
-            if file.split(".")[-1] not in options['output_format']:
-                options['output_format'].append(file.split(".")[-1])
+            if file.split(".")[-1] not in options["output_format"]:
+                options["output_format"].append(file.split(".")[-1])
 
-    for fmt in options['output_format']:
+    for fmt in options["output_format"]:
         if fmt not in acceptable_formats:
-            logger.error(
-                f"Invalid output format: {fmt}! Valid options are: {', '.join(acceptable_formats)}"
-            )
+            logger.error(f"Invalid output format: {fmt}! Valid options are: {', '.join(acceptable_formats)}")
             sys.exit(1)
         elif fmt == "table":
             options["output_format"][output_format.index(fmt)] = "txt"
 
     if len(options["output_file"]) < len(options["output_format"]):
-        options["output_file"] = [
-            f"role-reaper-results-{formatted_timestamp}.{fmt}"
-            for fmt in options["output_format"]
-        ]
+        options["output_file"] = [f"role-reaper-results-{formatted_timestamp}.{fmt}" for fmt in options["output_format"]]
 
     if options.get("debug"):
         set_log_level("DEBUG")

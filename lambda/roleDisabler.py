@@ -1,15 +1,16 @@
 import argparse
 import json
+import logging
+import os
+import re
+import threading
 import time
+
 import boto3
 import botocore.exceptions as botoexceptions
 import pandas as pd
-import logging
-import os
-import threading
-from tqdm import tqdm
 import structlog
-import re
+from tqdm import tqdm
 
 backup = False
 dry_run = False
@@ -51,17 +52,14 @@ def set_log_level(log_level: str = "info"):
         r"crit(ical)?": "CRITICAL",
     }
     matched_level = next(
-        (
-            full
-            for pattern, full in log_level_mapping.items()
-            if re.match(pattern, log_level)
-        ),
+        (full for pattern, full in log_level_mapping.items() if re.match(pattern, log_level)),
         None,
     )
     LOG_LEVEL = getattr(logging, matched_level) if matched_level else logging.INFO
     boto3_log_level(LOG_LEVEL)
     structlog.configure(wrapper_class=structlog.make_filtering_bound_logger(LOG_LEVEL))
     logger.info(f"Log level set to {matched_level}")
+
 
 def parse_arguments():
     """
@@ -76,36 +74,15 @@ def parse_arguments():
         type=str,
         help="Path to the file containing role names (txt, csv, json).",
     )
-    parser.add_argument(
-        "--backup-folder",
-        type=str,
-        help="Folder to save CloudFormation templates of roles before disabling.",
-        default="./backup-templates"
-    )
-    parser.add_argument(
-        "--backup", action="store_true", help="Backup the roles before disabling."
-    )
-    parser.add_argument(
-        "--enable", action="store_true", help="Enable the specified roles."
-    )
-    parser.add_argument(
-        "--disable", action="store_true", help="Disable the specified roles."
-    )
-    parser.add_argument(
-        "--delete", action="store_true", help="Delete the specified roles."
-    )
-    parser.add_argument(
-        "--restore", action="store_true", help="Restore the specified roles from backup."
-    )
-    parser.add_argument(
-        "-d", "--dry-run", action="store_true", help="Print actions without executing."
-    )
-    parser.add_argument(
-        "-k", "--tag-key", type=str, help="Tag key to use for tracking disabled roles."
-    )
-    parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable debug logging."
-    )
+    parser.add_argument("--backup-folder", type=str, help="Folder to save CloudFormation templates of roles before disabling.", default="./backup-templates")
+    parser.add_argument("--backup", action="store_true", help="Backup the roles before disabling.")
+    parser.add_argument("--enable", action="store_true", help="Enable the specified roles.")
+    parser.add_argument("--disable", action="store_true", help="Disable the specified roles.")
+    parser.add_argument("--delete", action="store_true", help="Delete the specified roles.")
+    parser.add_argument("--restore", action="store_true", help="Restore the specified roles from backup.")
+    parser.add_argument("-d", "--dry-run", action="store_true", help="Print actions without executing.")
+    parser.add_argument("-k", "--tag-key", type=str, help="Tag key to use for tracking disabled roles.")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging.")
     parser.set_defaults(backup=False, dry_run=False, tag_key="RoleReaper", verbose=os.environ.get("DEBUG", False))
     return parser.parse_args()
 
@@ -144,7 +121,7 @@ def make_api_call(client, method, **kwargs):
         client (Object): The client object to make the API call
         method (string): The method to call on the client object
         **kwargs: The arguments to pass to the method
-    
+
     Returns:
         Object: The response from the API call
     """
@@ -193,6 +170,7 @@ def get_role(client, role_name):
         logger.error(f"Error getting role {role_name}: {e}")
         return None
 
+
 def get_role_tags(client, role_name):
     """
     Get the tags of an IAM role
@@ -228,9 +206,7 @@ def get_role_policies(client, role_name):
     """
     logger.debug(f"Getting policies for role: {role_name}")
     try:
-        response = make_api_call(
-            client, "list_attached_role_policies", RoleName=role_name
-        )
+        response = make_api_call(client, "list_attached_role_policies", RoleName=role_name)
         policies = response.get("AttachedPolicies", [])
         logger.debug(f"Policies for role {role_name}: {policies}")
         return policies
@@ -311,7 +287,7 @@ def get_role_details(client, role_name):
             if policy_name == "RoleReaperDisablePolicy":
                 continue
             policy_document = get_role_policy(client, role_name, policy_name)
-            inline_policies.append({'PolicyName': policy_name, 'PolicyDocument': policy_document})
+            inline_policies.append({"PolicyName": policy_name, "PolicyDocument": policy_document})
 
         role["InlinePolicies"] = inline_policies
         logger.debug(f"Details for role {role_name}: {role}")
@@ -357,9 +333,7 @@ def create_cloudformation_template(client, role_name):
         }
 
         if role["RoleDetail"].get("Description", None):
-            role_resources["Properties"]["Description"] = role["RoleDetail"].get(
-                "Description", None
-            )
+            role_resources["Properties"]["Description"] = role["RoleDetail"].get("Description", None)
 
         if role["RoleDetail"]["Path"] != "/" and role["RoleDetail"]["Path"] != "/service-role/":
             role_resources["Properties"]["Path"] = role["RoleDetail"]["Path"]
@@ -369,7 +343,8 @@ def create_cloudformation_template(client, role_name):
                 {
                     "PolicyName": policy["PolicyName"],
                     "PolicyDocument": policy["PolicyDocument"],
-                } for policy in role["InlinePolicies"]
+                }
+                for policy in role["InlinePolicies"]
             ]
 
         if role["AttachedPolicies"]:
@@ -427,9 +402,7 @@ def backup_role(client, role_name, backup_folder):
         role_name (string): The name of the IAM role to backup
         backup_folder (string): The folder to save the backup to
     """
-    sanitized_role_name = re.sub(
-        r"[^a-zA-Z0-9-_]", "", role_name.replace(" ", "_").replace("/", "-")
-    )
+    sanitized_role_name = re.sub(r"[^a-zA-Z0-9-_]", "", role_name.replace(" ", "_").replace("/", "-"))
     logger.debug(f"Backing up role: {role_name}")
     try:
         try:
@@ -440,9 +413,7 @@ def backup_role(client, role_name, backup_folder):
         if not template:
             logger.warning(f"No template created for role {role_name}")
             return
-        file_name = (
-            f"{sanitized_role_name}-{time.strftime('%Y%m%d-%H%M%S')}.template.json"
-        )
+        file_name = f"{sanitized_role_name}-{time.strftime('%Y%m%d-%H%M%S')}.template.json"
         save_cloudformation_template(client, role_name, template, f"{backup_folder}/{file_name}")
         return template
     except Exception as e:
@@ -458,7 +429,7 @@ def tag_role(client, role_name, key, value):
         role_name (string): The name of the IAM role to tag
         key (string): The tag key
         value (string): The tag value
-    
+
     Returns:
         Object: The response from the API call
     """
@@ -496,7 +467,7 @@ def untag_role(client, role_name, key):
     if not dry_run:
         try:
             tags = get_role_tags(client, role_name)
-            if not key in [tag["Key"] for tag in tags]:
+            if key not in [tag["Key"] for tag in tags]:
                 logger.warning(f"Role {role_name} not tagged with key: {key}")
                 return
             response = make_api_call(client, "untag_role", RoleName=role_name, TagKeys=[key])
@@ -625,9 +596,7 @@ def detach_role_policy(client, role_name, policy_arn):
     logger.debug(f"Detaching policy {policy_arn} from role: {role_name}")
     if not dry_run:
         try:
-            response = make_api_call(
-                client, "detach_role_policy", RoleName=role_name, PolicyArn=policy_arn
-            )
+            response = make_api_call(client, "detach_role_policy", RoleName=role_name, PolicyArn=policy_arn)
             logger.info(f"Policy {policy_arn} detached from role {role_name}")
             return response
         except Exception as e:
@@ -672,9 +641,7 @@ def delete_inline_policy(client, role_name, policy_name):
     logger.debug(f"Deleting inline policy {policy_name} from role: {role_name}")
     if not dry_run:
         try:
-            response = make_api_call(
-                client, "delete_role_policy", RoleName=role_name, PolicyName=policy_name
-            )
+            response = make_api_call(client, "delete_role_policy", RoleName=role_name, PolicyName=policy_name)
             logger.info(f"Inline policy {policy_name} deleted from role {role_name}")
             return response
         except Exception as e:
@@ -717,9 +684,7 @@ def restore_role(client, role_name, backup_folder):
         Object: The response from the API call
     """
     logger.debug(f"Restoring role: {role_name}")
-    sanitized_role_name = re.sub(
-        r"[^a-zA-Z0-9-_]", "", role_name.replace(" ", "_").replace("/", "-")
-    )
+    sanitized_role_name = re.sub(r"[^a-zA-Z0-9-_]", "", role_name.replace(" ", "_").replace("/", "-"))
     resource_name = role_name.replace(" ", "").replace("/", "").replace("-", "")
     if not dry_run:
         try:
@@ -728,16 +693,10 @@ def restore_role(client, role_name, backup_folder):
                 logger.warning(f"Role {role_name} already exists")
                 return
             else:
-                logger.info(
-                    f"Role {role_name} does not exist. Proceeding with restoration."
-                )
+                logger.info(f"Role {role_name} does not exist. Proceeding with restoration.")
 
             # Get list of templates from backup folder for role
-            templates = [
-                template
-                for template in os.listdir(backup_folder)
-                if sanitized_role_name in template
-            ]
+            templates = [template for template in os.listdir(backup_folder) if sanitized_role_name in template]
             if not templates:
                 logger.error(f"No template found for role {role_name}")
                 return
@@ -756,9 +715,7 @@ def restore_role(client, role_name, backup_folder):
                 None,
             )
             if not role_key:
-                logger.error(
-                    f"No matching role key found in template for {sanitized_role_name}"
-                )
+                logger.error(f"No matching role key found in template for {sanitized_role_name}")
                 return
 
             role_template = template["Resources"][role_key]["Properties"]
@@ -787,9 +744,7 @@ def restore_role(client, role_name, backup_folder):
                         RoleName=role_name,
                         PolicyArn=policy_arn,
                     )
-                    logger.info(
-                        f"Managed policy {policy_arn} attached to role {role_name}"
-                    )
+                    logger.info(f"Managed policy {policy_arn} attached to role {role_name}")
 
             # Create inline policies
             if "Policies" in role_template:
@@ -801,16 +756,11 @@ def restore_role(client, role_name, backup_folder):
                         PolicyName=policy["PolicyName"],
                         PolicyDocument=json.dumps(policy["PolicyDocument"]),
                     )
-                    logger.info(
-                        f"Inline policy {policy['PolicyName']} created for role {role_name}"
-                    )
+                    logger.info(f"Inline policy {policy['PolicyName']} created for role {role_name}")
 
             # Tag the role
             if "Tags" in role_template:
-                tags = [
-                    {"Key": tag["Key"], "Value": tag["Value"]}
-                    for tag in role_template["Tags"]
-                ]
+                tags = [{"Key": tag["Key"], "Value": tag["Value"]} for tag in role_template["Tags"]]
                 make_api_call(client, "tag_role", RoleName=role_name, Tags=tags)
                 logger.info(f"Tags added to role {role_name}")
 
@@ -850,10 +800,12 @@ def main():
         if backup:
             logger.info("Backing up roles")
             progress_bar = tqdm(total=len(roles), desc="Backing up Roles", unit="role")
+
             def backup_roles():
                 for role_name in roles:
                     backup_role(iam_client, role_name, backup_folder)
                     progress_bar.update(1)
+
             thread = threading.Thread(target=backup_roles)
             thread.start()
             thread.join()  # Wait for the backup thread to finish before continuing
@@ -864,19 +816,23 @@ def main():
         if args.enable:
             logger.info("Enabling roles")
             progress_bar = tqdm(total=len(roles), desc="Enabling Roles", unit="role")
+
             def enable_roles():
                 for role_name in roles:
                     enable_role(iam_client, role_name)
                     progress_bar.update(1)
+
             thread = threading.Thread(target=enable_roles)
             thread.start()
         elif args.disable:
             logger.info("Disabling roles")
             progress_bar = tqdm(total=len(roles), desc="Disabling Roles", unit="role")
+
             def disable_roles():
                 for role_name in roles:
                     disable_role(iam_client, role_name)
                     progress_bar.update(1)
+
             thread = threading.Thread(target=disable_roles)
             thread.start()
         elif args.delete:
@@ -885,10 +841,12 @@ def main():
             confirm = input("Type 'yes' or 'y' to confirm:")
             if confirm.lower() in ["yes", "y"]:
                 progress_bar = tqdm(total=len(roles), desc="Deleting Roles", unit="role")
+
                 def delete_roles():
                     for role_name in roles:
                         delete_role(iam_client, role_name)
                         progress_bar.update(1)
+
                 thread = threading.Thread(target=delete_roles)
                 thread.start()
             else:
@@ -897,10 +855,12 @@ def main():
         elif args.restore:
             logger.info("Restoring roles")
             progress_bar = tqdm(total=len(roles), desc="Restoring Roles", unit="role")
+
             def restore_roles():
                 for role_name in roles:
                     restore_role(iam_client, role_name, backup_folder)
                     progress_bar.update(1)
+
             thread = threading.Thread(target=restore_roles)
             thread.start()
         else:
