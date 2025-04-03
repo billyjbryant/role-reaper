@@ -14,7 +14,7 @@ role-reaper = "lambda.index:main"
 [tool.poetry.dependencies]
 python = "^3.12"
 boto3 = "1.34.81"
-botocore = "1.34.81"
+botocore = "1.37.26"
 pandas = "2.2.3"
 tqdm = "4.66.4"
 structlog = "23.1.0"
