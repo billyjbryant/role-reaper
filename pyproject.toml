@@ -2,7 +2,7 @@
 name = "role-reaper"
 version = "0.1.0"
 description = "A tool for managing AWS IAM roles, including enabling, disabling, deleting, and restoring roles."
-authors = ["Billy Bryant <3013565+billyjbryant@users.noreply.github.com>"]
+authors = ["Billy Bryant <billy@rmdash.fr>"]
 license = "MIT"
 readme = "README.md"
 packages = [{include = "lambda"}]
