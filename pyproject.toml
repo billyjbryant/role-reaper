@@ -20,7 +20,7 @@ tqdm = "4.66.4"
 structlog = "23.1.0"
 
 [tool.poetry.dev-dependencies]
-pytest = "^7.0"
+pytest = "^8.0.0"
 black = "^25.1"
 flake8 = "^6.0"
 mypy = "^1.0"
